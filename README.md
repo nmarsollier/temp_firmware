@@ -1,2 +1,63 @@
-# temp_firmware
-Temperature and Accelerometer Firmware for BFT
+# temp_firmware — Ambient temperature, humidity and vibration
+
+Measures the ambient temperature/humidity and the telescope vibration. This board
+hosts only the two sensors (SHT31 + ADXL345) on the shared I2C bus; the focuser and
+the fan live in their own boards (`eaf_firmware` and `fan_firmware`).
+
+## Functionality
+
+- Ambient temperature and relative humidity (SHT31-D over I2C).
+- Dew point (computed from ambient temperature and humidity).
+- Telescope vibration (ADXL345 over I2C): per-axis demeaned RMS in m/s².
+
+No 12 V sensor, no LEDs and no buttons — it is a sensor module only.
+
+## Implementation status (October 2026)
+
+| Module | Role | Pins |
+|---|---|---|
+| `i2c_bus` | Shared I2C master bus (ADXL345 + SHT31). | SDA `I2C_SDA_GPIO`, SCL `I2C_SCL_GPIO` |
+| `sht31` | SHT31-D over I2C (driver: init, probe, read). | SDA `I2C_SDA_GPIO`, SCL `I2C_SCL_GPIO`, addr `SHT31_ADDR` |
+| `accelerometer` | ADXL345 over I2C (driver: init, probe, read). | SDA `I2C_SDA_GPIO`, SCL `I2C_SCL_GPIO`, addr `ADXL345_ADDR` |
+| `vibration` | Per-axis movement figures (demeaned RMS in m/s²) from the ADXL345. | — |
+| `environment` | Ambient temp/humidity from the SHT31 + dew point. | — |
+| `usb_cdc` | USB CDC-ACM transport (TinyUSB). | — |
+| `proto` | `proto=2`, `device_id="temp"`; handlers `capabilities`/`state`/`action`/`config`/`control`. | — |
+
+The protocol contract is documented in [`main/proto/README.md`](main/proto/README.md).
+
+## Hardware
+
+| Component | Part |
+|---|---|
+| Microcontroller | ESP32-S3 <https://www.amazon.com/dp/B0DG8L7MQ9> |
+| Ambient temp/humidity | SHT31-D <https://www.amazon.com/dp/B0GZZ9W7CK> |
+| Accelerometer | ADXL345 |
+
+## Ambient temperature and humidity — SHT31
+
+- I2C bus, usual address 0x44 (`SHT31_ADDR`).
+- SDA/SCL are shared with the ADXL345.
+- Must be placed in a ventilated area, away from the ESP32 and regulator heat.
+- Provides ambient temperature and humidity (for the dew point, reported to the
+  gateway).
+
+## ADXL345 accelerometer
+
+- I2C address `ADXL345_ADDR`.
+- Measures telescope vibrations.
+- Encapsulated with the temperature/humidity sensor, mounted on the telescope tube.
+- Initially statistics only, reported to the gateway. Could later analyze mount
+  problems and tracking quality.
+
+## Communication
+
+USB-CDC with JSON messages. Provides the ambient temperature/humidity/dew point and
+the vibration figures. The Go gateway (`mount_panel`) implements the Alpaca
+ObservingConditions V2 interface (and the ambient-temperature switch channel) on top
+of this link.
+
+## Alpaca
+
+The Go interface (`mount_panel`) exposes the ambient temperature, humidity and dew
+point through the Alpaca ObservingConditions V2 interface.
